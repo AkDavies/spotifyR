@@ -1,6 +1,7 @@
 library(httr)
 library(glue)
-
+library(magrittr)
+library(stringr)
 # Spotify Web API Base URL
 BASE_URL <- "https://api.spotify.com"
 
@@ -8,6 +9,15 @@ SPOTIFY_CLIENT_ID <- "7a10a16f6b5649b8a3d4c837ab30b1d2"
 SPOTIFY_SECRET <- "a970c16c23c64b02a5a04af82bb571c4"
 
 SPOTIFY_AUTHORIZATION_URL <- "https://accounts.spotify.com/api/token"
+
+get_access_token <- function(){
+    response <- POST(SPOTIFY_AUTHORIZATION_URL,
+         authenticate(SPOTIFY_CLIENT_ID, SPOTIFY_SECRET),
+         body = list(grant_type = "client_credentials"),
+         encode = "form"
+         ) %>% 
+        stop_for_status("create access token")
+}
 
 SPOTIFY_ACCESS_TOKEN <- POST(SPOTIFY_AUTHORIZATION_URL,
               authenticate(SPOTIFY_CLIENT_ID,SPOTIFY_SECRET),
@@ -21,3 +31,39 @@ test_track <- GET(test_url,
                   add_headers(Authorization = glue('Bearer {SPOTIFY_ACCESS_TOKEN}'))
                   ) 
 
+test_query <- "Bryce Vine"
+
+is_valid_search_string <- function(search_string){
+    if(!is.character(search_string)) return(FALSE)
+    if(length(search_string) > 1) return(FALSE)
+    return(TRUE)
+}
+
+is_valid_limit <- function(limit){
+    if(!is.numeric(limit)) return(FALSE)
+    if(limit < 0) return(FALSE)
+    return(TRUE)
+}
+search_tracks <- function(search_string, by = "artist", limit  = 20){
+    if(!is_valid_search_string(search_string)) stop("Invalid search_string")
+    if(!is_valid_limit(limit)) stop("Invalid Limit")
+    by_options <- c("name", "artist", "album")
+    by <- match.arg(by, by_options)
+    search_string <- str_replace_all(search_string, " ", "+")
+    response <- GET(modify_url(BASE_URL, path = "/v1/search"),
+        add_headers(Authorization = glue('Bearer {SPOTIFY_ACCESS_TOKEN}')),
+        query = list(q = search_string, type = "track", limit = limit)
+        )
+    content <- content(response)$tracks$items
+    map_df(content, 
+           ~data_frame(name = .$name, 
+                       artist = .$artists[[1]]$name, 
+                       album = .$album$name, 
+                       `track no` = .$track_number, 
+                       popularity = .$popularity, 
+                       duration = .$duration_ms, 
+                       explicit = .$explicit, 
+                       uri = .$uri
+                       )
+           )
+}
