@@ -2,6 +2,8 @@ library(httr)
 library(glue)
 library(magrittr)
 library(stringr)
+library(purrr)
+library(tidyverse)
 # Spotify Web API Base URL
 BASE_URL <- "https://api.spotify.com"
 
@@ -44,18 +46,19 @@ is_valid_limit <- function(limit){
     if(limit < 0) return(FALSE)
     return(TRUE)
 }
-search_tracks <- function(search_string, by = "artist", limit  = 20){
+search_tracks <- function(search_string, by = c("name", "artist", "album"), limit  = 20){
     if(!is_valid_search_string(search_string)) stop("Invalid search_string")
     if(!is_valid_limit(limit)) stop("Invalid Limit")
-    by_options <- c("name", "artist", "album")
-    by <- match.arg(by, by_options)
+    by <- match.arg(by)
     search_string <- str_replace_all(search_string, " ", "+")
     response <- GET(modify_url(BASE_URL, path = "/v1/search"),
         add_headers(Authorization = glue('Bearer {SPOTIFY_ACCESS_TOKEN}')),
         query = list(q = search_string, type = "track", limit = limit)
         )
-    content <- content(response)$tracks$items
-    map_df(content, 
+    # api_response <- make_GET_request(modify_url(BASE_URL, path = "/v1/search"),
+    #                                  )
+    tracks_raw <- content(response)$tracks$items
+    tracks <- map_df(tracks_raw, 
            ~data_frame(name = .$name, 
                        artist = .$artists[[1]]$name, 
                        album = .$album$name, 
@@ -66,4 +69,26 @@ search_tracks <- function(search_string, by = "artist", limit  = 20){
                        uri = .$uri
                        )
            )
+    tracks
+}
+
+make_GET_request <- function(url, headers = NULL, query_params = NULL){
+    call <- match.call()
+    api_resposne <- do.call("GET", call[-1])
+}
+get_albums <- function(id, album_type = c("album", "single", "appears_on", "compilation"),
+                       market = "US", limit = 20){
+    #Validate inputs
+    if(!is_valid_search_string(id)) stop("Invalid ID")
+    if(length(market) != 2) stop("Invalid market")
+    if(!is_valid_limit(limit)) stop("Invalid Limit")
+    album_type <- match.arg(album_type)
+    api_response <- GET(modify_url(BASE_URL, path = glue('v1/artists/{id}/albums')),
+                    add_headers(Authorization = glue('Bearer {SPOTIFY_ACCESS_TOKEN}')),
+                    query = list(album_type = album_type,
+                                 market = market,
+                                 limit = limit)
+                    )
+    album_list <- content(api_response)$albums$items
+    
 }
