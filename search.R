@@ -12,21 +12,18 @@ SPOTIFY_SECRET <- "a970c16c23c64b02a5a04af82bb571c4"
 
 SPOTIFY_AUTHORIZATION_URL <- "https://accounts.spotify.com/api/token"
 
-get_access_token <- function(){
-    response <- POST(SPOTIFY_AUTHORIZATION_URL,
-         authenticate(SPOTIFY_CLIENT_ID, SPOTIFY_SECRET),
-         body = list(grant_type = "client_credentials"),
-         encode = "form"
-         ) %>% 
-        stop_for_status("create access token")
+request_access_token <- function(client_id, secret_key){
+    api_response <- POST(SPOTIFY_AUTHORIZATION_URL,
+                     authenticate(client_id, secret_key),
+                     body = list(grant_type = "client_credentials"),
+                     encode = "form"
+                     ) %>% 
+        stop_for_status("create access token") %>% 
+        content() %>%
+        {.$access_token}
 }
 
-SPOTIFY_ACCESS_TOKEN <- POST(SPOTIFY_AUTHORIZATION_URL,
-              authenticate(SPOTIFY_CLIENT_ID,SPOTIFY_SECRET),
-              # add_headers(Authorization = glue("Basic ",SPOTIFY_CLIENT_ID,":",SPOTIFY_SECRET,.sep = "")),
-              body = list(grant_type = "client_credentials"),
-              encode = "form"
-              ) %>% content() %>% {.$access_token}
+SPOTIFY_ACCESS_TOKEN <- request_access_token(SPOTIFY_CLIENT_ID, SPOTIFY_SECRET)
 
 test_url <- "https://api.spotify.com/v1/tracks/3n3Ppam7vgaVa1iaRUc9Lp"
 test_track <- GET(test_url,
@@ -46,18 +43,17 @@ is_valid_limit <- function(limit){
     if(limit < 0) return(FALSE)
     return(TRUE)
 }
+
 search_tracks <- function(search_string, by = c("name", "artist", "album"), limit  = 20){
     if(!is_valid_search_string(search_string)) stop("Invalid search_string")
     if(!is_valid_limit(limit)) stop("Invalid Limit")
     by <- match.arg(by)
     search_string <- str_replace_all(search_string, " ", "+")
-    response <- GET(modify_url(BASE_URL, path = "/v1/search"),
-        add_headers(Authorization = glue('Bearer {SPOTIFY_ACCESS_TOKEN}')),
-        query = list(q = search_string, type = "track", limit = limit)
-        )
-    # api_response <- make_GET_request(modify_url(BASE_URL, path = "/v1/search"),
-    #                                  )
-    tracks_raw <- content(response)$tracks$items
+    api_response <- GET(modify_url(BASE_URL, path = "/v1/search"),
+                        add_headers(Authorization = glue('Bearer {SPOTIFY_ACCESS_TOKEN}')),
+                        query = list(q = search_string, type = "track", limit = limit)
+                        )
+    tracks_raw <- content(api_response)$tracks$items
     tracks <- map_df(tracks_raw, 
            ~data_frame(name = .$name, 
                        artist = .$artists[[1]]$name, 
@@ -80,15 +76,18 @@ get_albums <- function(id, album_type = c("album", "single", "appears_on", "comp
                        market = "US", limit = 20){
     #Validate inputs
     if(!is_valid_search_string(id)) stop("Invalid ID")
-    if(length(market) != 2) stop("Invalid market")
+    if(!is.character(market) | length(market) != 2) stop("Invalid market")
     if(!is_valid_limit(limit)) stop("Invalid Limit")
     album_type <- match.arg(album_type)
+    
     api_response <- GET(modify_url(BASE_URL, path = glue('v1/artists/{id}/albums')),
                     add_headers(Authorization = glue('Bearer {SPOTIFY_ACCESS_TOKEN}')),
                     query = list(album_type = album_type,
                                  market = market,
-                                 limit = limit)
+                                 limit = limit
+                                 )
                     )
+    
     album_list <- content(api_response)$albums$items
     
 }
